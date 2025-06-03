@@ -1,0 +1,32 @@
+[
+  {
+    "@timestamp": "2024-01-15T10:30:00.000Z",
+    "message": "[2024-01-15 10:30:00] COMMANDE_RECU CMD_003 client=CLI_789 articles=[ART_006, ART_007]",
+    "host": "frontend-01",
+    "service": "ecommerce-frontend"
+  },
+  {
+    "@timestamp": "2024-01-15T10:30:05.000Z",
+    "message": "[2024-01-15 10:30:05] VALIDATION_COMMANDE CMD_003 → ordre=ORD_003 status=VALIDE",
+    "host": "backend-01",
+    "service": "order-service"
+  },
+  {
+    "@timestamp": "2024-01-15T10:30:10.000Z",
+    "message": "[2024-01-15 10:30:10] ORDRE_TRAITE ORD_003 → livraison=LIV_003",
+    "host": "backend-02",
+    "service": "fulfillment-service"
+  },
+  {
+    "@timestamp": "2024-01-15T11:00:00.000Z",
+    "message": "[2024-01-15 11:00:00] PAIEMENT_RECU PAY_002 montant=149.99",
+    "host": "payment-gateway",
+    "service": "payment-service"
+  },
+  {
+    "@timestamp": "2024-01-15T11:00:05.000Z",
+    "message": "[2024-01-15 11:00:05] AUTORISATION PAY_002 → transaction=TXN_002",
+    "host": "payment-processor",
+    "service": "payment-processor"
+  }
+]

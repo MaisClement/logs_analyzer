@@ -1,0 +1,179 @@
+# Configuration des flux multi-applicatifs
+flux_types:
+  TraitementCommande:
+    description: "Traitement des commandes e-commerce avec sous-flux articles"
+    applications:
+      Frontend:
+        patterns:
+          ENTREE_FLUX:
+            regex: '\[(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:\.\d{3})?)\] COMMANDE_RECU (?P<reference>\w+) client=(?P<client_id>\w+) articles=\[(?P<articles>[^\]]+)\]'
+            timestamp_format: '%Y-%m-%d %H:%M:%S'
+            identifier_fields: ['reference']
+            payload_fields: ['client_id', 'articles']
+          CREATION_ENFANTS:
+            regex: '\[(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:\.\d{3})?)\] CREATION_ARTICLES (?P<reference>\w+) articles=\[(?P<enfants_ids>[^\]]+)\]'
+            timestamp_format: '%Y-%m-%d %H:%M:%S'
+            identifier_fields: ['reference']
+            payload_fields: ['enfants_ids']
+      BackendCommande:
+        patterns:
+          TRAITEMENT_APP:
+            regex: '\[(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:\.\d{3})?)\] VALIDATION_COMMANDE (?P<reference>\w+) → ordre=(?P<ordre_id>\w+) status=(?P<status>\w+)'
+            timestamp_format: '%Y-%m-%d %H:%M:%S'
+            identifier_fields: ['reference']
+            payload_fields: ['ordre_id', 'status']
+            reference_links: ['ordre_id']
+          TRAITEMENT_ENFANT:
+            regex: '\[(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:\.\d{3})?)\] TRAITEMENT_ARTICLE (?P<article_id>\w+) parent=(?P<parent_ref>\w+) stock=(?P<stock>\w+)'
+            timestamp_format: '%Y-%m-%d %H:%M:%S'
+            identifier_fields: ['article_id']
+            payload_fields: ['parent_ref', 'stock']
+      SystemeGestion:
+        patterns:
+          TRAITEMENT_APP:
+            regex: '\[(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:\.\d{3})?)\] ORDRE_TRAITE (?P<ordre_id>\w+) → livraison=(?P<livraison_id>\w+)'
+            timestamp_format: '%Y-%m-%d %H:%M:%S'
+            identifier_fields: ['ordre_id']
+            payload_fields: ['livraison_id']
+            reference_links: ['livraison_id']
+
+  InscriptionUtilisateur:
+    description: "Inscription d'un nouvel utilisateur"
+    applications:
+      SiteWeb:
+        patterns:
+          ENTREE_FLUX:
+            regex: '\[(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\] INSCRIPTION_DEMANDE (?P<reference>\w+) email=(?P<email>[^\s]+)'
+            timestamp_format: '%Y-%m-%d %H:%M:%S'
+            identifier_fields: ['reference']
+            payload_fields: ['email']
+      ServiceAuth:
+        patterns:
+          TRAITEMENT_APP:
+            regex: '\[(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\] VALIDATION_USER (?P<reference>\w+) → user_id=(?P<user_id>\w+)'
+            timestamp_format: '%Y-%m-%d %H:%M:%S'
+            identifier_fields: ['reference']
+            payload_fields: ['user_id']
+            reference_links: ['user_id']
+      NotificationService:
+        patterns:
+          SORTIE_FLUX:
+            regex: '\[(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\] EMAIL_SENT user_id=(?P<user_id>\w+) status=(?P<status>\w+)'
+            timestamp_format: '%Y-%m-%d %H:%M:%S'
+            identifier_fields: ['user_id']
+            payload_fields: ['status']
+
+  TraitementPaiement:
+    description: "Traitement des paiements"
+    applications:
+      GatewayPaiement:
+        patterns:
+          ENTREE_FLUX:
+            regex: '\[(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\] PAIEMENT_RECU (?P<reference>\w+) montant=(?P<montant>[\d.]+)'
+            timestamp_format: '%Y-%m-%d %H:%M:%S'
+            identifier_fields: ['reference']
+            payload_fields: ['montant']
+      ProcesseurPaiement:
+        patterns:
+          TRAITEMENT_APP:
+            regex: '\[(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\] AUTORISATION (?P<reference>\w+) → transaction=(?P<transaction_id>\w+)'
+            timestamp_format: '%Y-%m-%d %H:%M:%S'
+            identifier_fields: ['reference']
+            payload_fields: ['transaction_id']
+            reference_links: ['transaction_id']
+      Comptabilite:
+        patterns:
+          SORTIE_FLUX:
+            regex: '\[(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\] ECRITURE_COMPTABLE transaction=(?P<transaction_id>\w+) compte=(?P<compte>\w+)'
+            timestamp_format: '%Y-%m-%d %H:%M:%S'
+            identifier_fields: ['transaction_id']
+            payload_fields: ['compte']
+
+  GestionColis:
+    description: "Gestion et suivi des colis"
+    applications:
+      EntrepotService:
+        patterns:
+          ENTREE_FLUX:
+            regex: '\[(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\] COLIS_CREE (?P<reference>\w+) poids=(?P<poids>[\d.]+)'
+            timestamp_format: '%Y-%m-%d %H:%M:%S'
+            identifier_fields: ['reference']
+            payload_fields: ['poids']
+      TransportService:
+        patterns:
+          TRAITEMENT_APP:
+            regex: '\[(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\] EXPEDITION (?P<reference>\w+) → tracking=(?P<tracking_id>\w+)'
+            timestamp_format: '%Y-%m-%d %H:%M:%S'
+            identifier_fields: ['reference']
+            payload_fields: ['tracking_id']
+            reference_links: ['tracking_id']
+      ServiceLivraison:
+        patterns:
+          SORTIE_FLUX:
+            regex: '\[(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\] LIVRAISON tracking=(?P<tracking_id>\w+) status=(?P<status>\w+)'
+            timestamp_format: '%Y-%m-%d %H:%M:%S'
+            identifier_fields: ['tracking_id']
+            payload_fields: ['status']
+
+  VenteEnLigne:
+    description: "Processus de vente en ligne"
+    applications:
+      Catalogue:
+        patterns:
+          ENTREE_FLUX:
+            regex: '\[(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\] PRODUIT_CONSULTE (?P<reference>\w+) produit=(?P<produit_id>\w+)'
+            timestamp_format: '%Y-%m-%d %H:%M:%S'
+            identifier_fields: ['reference']
+            payload_fields: ['produit_id']
+      Panier:
+        patterns:
+          TRAITEMENT_APP:
+            regex: '\[(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\] AJOUT_PANIER (?P<reference>\w+) → session=(?P<session_id>\w+)'
+            timestamp_format: '%Y-%m-%d %H:%M:%S'
+            identifier_fields: ['reference']
+            payload_fields: ['session_id']
+            reference_links: ['session_id']
+      Checkout:
+        patterns:
+          SORTIE_FLUX:
+            regex: '\[(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\] COMMANDE_FINALISEE session=(?P<session_id>\w+) commande=(?P<commande_id>\w+)'
+            timestamp_format: '%Y-%m-%d %H:%M:%S'
+            identifier_fields: ['session_id']
+            payload_fields: ['commande_id']
+
+  ServiceClient:
+    description: "Service client et support"
+    applications:
+      TicketService:
+        patterns:
+          ENTREE_FLUX:
+            regex: '\[(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\] TICKET_CREE (?P<reference>\w+) client=(?P<client_id>\w+)'
+            timestamp_format: '%Y-%m-%d %H:%M:%S'
+            identifier_fields: ['reference']
+            payload_fields: ['client_id']
+      SupportAgent:
+        patterns:
+          TRAITEMENT_APP:
+            regex: '\[(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\] TICKET_ASSIGNE (?P<reference>\w+) → agent=(?P<agent_id>\w+)'
+            timestamp_format: '%Y-%m-%d %H:%M:%S'
+            identifier_fields: ['reference']
+            payload_fields: ['agent_id']
+            reference_links: ['agent_id']
+      CRM:
+        patterns:
+          SORTIE_FLUX:
+            regex: '\[(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\] TICKET_FERME agent=(?P<agent_id>\w+) resolution=(?P<resolution>\w+)'
+            timestamp_format: '%Y-%m-%d %H:%M:%S'
+            identifier_fields: ['agent_id']
+            payload_fields: ['resolution']
+
+# Configuration de la base de données
+database:
+  url: "sqlite:///logs_flow.db"
+  echo: false
+
+# Configuration générale
+log_processing:
+  batch_size: 1000
+  commit_frequency: 100
+  max_retries: 3

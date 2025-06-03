@@ -1,0 +1,106 @@
+[
+  {
+    "@timestamp": "2024-01-15T14:00:00.000Z",
+    "message": "[2024-01-15 14:00:00] COMMANDE_RECU CMD_ELASTIC_001 client=CLI_ELASTIC_001 articles=[ART_ELASTIC_001, ART_ELASTIC_002]",
+    "host": "frontend-cluster-01",
+    "service": "ecommerce-frontend",
+    "level": "INFO",
+    "trace_id": "trace-12345",
+    "span_id": "span-67890",
+    "user_id": "user-elastic-001",
+    "session_id": "session-elastic-001",
+    "fields": {
+      "environment": "production",
+      "datacenter": "eu-west-1",
+      "version": "v2.1.3"
+    }
+  },
+  {
+    "@timestamp": "2024-01-15T14:00:05.000Z",
+    "message": "[2024-01-15 14:00:05] VALIDATION_COMMANDE CMD_ELASTIC_001 → ordre=ORD_ELASTIC_001 status=VALIDE",
+    "host": "backend-cluster-02",
+    "service": "order-validation-service",
+    "level": "INFO",
+    "trace_id": "trace-12345",
+    "span_id": "span-67891",
+    "fields": {
+      "environment": "production",
+      "datacenter": "eu-west-1",
+      "version": "v1.8.2",
+      "processing_time_ms": 1250
+    }
+  },
+  {
+    "@timestamp": "2024-01-15T14:00:10.000Z",
+    "_source": {
+      "message": "[2024-01-15 14:00:10] ORDRE_TRAITE ORD_ELASTIC_001 → livraison=LIV_ELASTIC_001",
+      "host": "fulfillment-service-03",
+      "service": "fulfillment-processor",
+      "level": "INFO",
+      "custom_field": "elastic_format_test"
+    }
+  },
+  {
+    "@timestamp": "2024-01-15T14:01:00.000Z",
+    "message": "[2024-01-15 14:01:00] PAIEMENT_RECU PAY_ELASTIC_001 montant=199.99",
+    "host": "payment-gateway-cluster",
+    "service": "payment-service",
+    "level": "INFO",
+    "payment_method": "credit_card",
+    "currency": "EUR",
+    "country": "FR"
+  },
+  {
+    "@timestamp": "2024-01-15T14:01:05.000Z",
+    "message": "[2024-01-15 14:01:05] AUTORISATION PAY_ELASTIC_001 → transaction=TXN_ELASTIC_001",
+    "host": "payment-processor-01",
+    "service": "payment-processor",
+    "level": "INFO",
+    "authorization_code": "AUTH123456",
+    "risk_score": 0.15
+  },
+  {
+    "@timestamp": "2024-01-15T14:01:10.000Z",
+    "message": "[2024-01-15 14:01:10] ECRITURE_COMPTABLE transaction=TXN_ELASTIC_001 compte=RECETTES",
+    "host": "accounting-service",
+    "service": "financial-processor",
+    "level": "INFO",
+    "accounting_period": "2024-Q1",
+    "journal_entry_id": "JE-2024-001"
+  },
+  {
+    "@timestamp": "2024-01-15T14:02:00.000Z",
+    "message": "Log mal formaté sans pattern reconnu",
+    "host": "unknown-service",
+    "service": "test-service",
+    "level": "ERROR"
+  },
+  {
+    "@timestamp": "2024-01-15T14:02:30.000Z",
+    "message": "[2024-01-15 14:02:30] INSCRIPTION_DEMANDE USR_ELASTIC_001 email=elastic@test.com",
+    "host": "user-service-cluster",
+    "service": "user-registration",
+    "level": "INFO",
+    "registration_source": "web",
+    "marketing_campaign": "summer2024"
+  },
+  {
+    "@timestamp": "2024-01-15T14:02:35.000Z",
+    "message": "[2024-01-15 14:02:35] VALIDATION_USER USR_ELASTIC_001 → user_id=U_ELASTIC_001",
+    "host": "auth-service-cluster",
+    "service": "authentication-service",
+    "level": "INFO",
+    "auth_method": "email_verification",
+    "verification_token": "TOKEN_ABC123"
+  },
+  {
+    "@timestamp": "2024-01-15T14:02:40.000Z",
+    "message": "[2024-01-15 14:02:40] EMAIL_SENT user_id=U_ELASTIC_001 status=ENVOYE",
+    "host": "notification-service",
+    "service": "email-sender",
+    "level": "INFO",
+    "email_provider": "sendgrid",
+    "template_id": "welcome_email_v2",
+    "delivery_time_ms": 850
+  }
+]

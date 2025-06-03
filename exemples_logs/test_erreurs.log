@@ -1,0 +1,43 @@
+# Test 3: Logs malformés et cas d'erreur pour tester la robustesse
+# Logs normaux
+[2024-01-15 12:00:00] COMMANDE_RECU CMD_ERROR_001 client=CLI_001 articles=[ART_TEST_001]
+[2024-01-15 12:00:05] VALIDATION_COMMANDE CMD_ERROR_001 → ordre=ORD_ERROR_001 status=VALIDE
+
+# Logs malformés - dates incorrectes
+[2024-13-45 25:99:99] COMMANDE_RECU CMD_BAD_DATE client=CLI_002 articles=[ART_002]
+[invalid-date] COMMANDE_RECU CMD_NO_DATE client=CLI_003 articles=[ART_003]
+
+# Logs avec caractères spéciaux et encodage
+[2024-01-15 12:01:00] COMMANDE_RECU CMD_SPECIAL_001 client=CLI_SPÉCIAL_ñ articles=[ART_ÉMOJI_😀, ART_UNICODE_中文]
+
+# Logs très longs
+[2024-01-15 12:02:00] COMMANDE_RECU CMD_LONG_001 client=CLI_SUPER_LONG_NAME_WITH_MANY_CHARACTERS_THAT_COULD_BREAK_PARSING articles=[ART_WITH_EXTREMELY_LONG_NAME_THAT_TESTS_BUFFER_LIMITS_AND_MEMORY_ALLOCATION_SCENARIOS_0001, ART_WITH_EXTREMELY_LONG_NAME_THAT_TESTS_BUFFER_LIMITS_AND_MEMORY_ALLOCATION_SCENARIOS_0002]
+
+# Logs avec données manquantes
+[2024-01-15 12:03:00] COMMANDE_RECU  client=CLI_004 articles=[]
+[2024-01-15 12:03:05] VALIDATION_COMMANDE CMD_EMPTY → ordre= status=
+
+# Logs dupliqués (même référence)
+[2024-01-15 12:04:00] COMMANDE_RECU CMD_DUPLICATE client=CLI_005 articles=[ART_005]
+[2024-01-15 12:04:01] COMMANDE_RECU CMD_DUPLICATE client=CLI_005 articles=[ART_005]
+
+# Logs avec formats non reconnus
+This is not a valid log line at all
+2024-01-15 12:05:00 LOG WITHOUT BRACKETS
+[2024-01-15 12:05:05] UNKNOWN_ACTION CMD_UNKNOWN data=something
+
+# Logs avec injection de caractères
+[2024-01-15 12:06:00] COMMANDE_RECU CMD_INJECTION client=CLI_006; DROP TABLE users; articles=[ART_006]
+
+# Logs en désordre chronologique
+[2024-01-15 12:10:00] COMMANDE_RECU CMD_TIME_001 client=CLI_007 articles=[ART_007]
+[2024-01-15 12:05:00] VALIDATION_COMMANDE CMD_TIME_001 → ordre=ORD_TIME_001 status=VALIDE
+
+# Logs avec références circulaires
+[2024-01-15 12:11:00] COMMANDE_RECU CMD_CIRCULAR_001 client=CLI_008 articles=[ART_008]
+[2024-01-15 12:11:05] VALIDATION_COMMANDE CMD_CIRCULAR_001 → ordre=CMD_CIRCULAR_001 status=ERREUR
+
+# Logs normaux pour finir
+[2024-01-15 12:15:00] COMMANDE_RECU CMD_NORMAL_001 client=CLI_009 articles=[ART_009]
+[2024-01-15 12:15:05] VALIDATION_COMMANDE CMD_NORMAL_001 → ordre=ORD_NORMAL_001 status=VALIDE
+[2024-01-15 12:15:10] ORDRE_TRAITE ORD_NORMAL_001 → livraison=LIV_NORMAL_001
