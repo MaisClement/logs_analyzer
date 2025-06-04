@@ -2,6 +2,12 @@
 flux_types:
   TraitementCommande:
     description: "Traitement des commandes e-commerce avec sous-flux articles"
+    required_steps:
+      - ENTREE_FLUX        # Réception de la commande (obligatoire)
+      - TRAITEMENT_APP     # Validation de la commande (obligatoire)
+    optional_steps:
+      - CREATION_ENFANTS   # Création des sous-flux articles (optionnel)
+      - TRAITEMENT_ENFANT  # Traitement des articles (optionnel)
     applications:
       Frontend:
         patterns:
@@ -36,9 +42,12 @@ flux_types:
             identifier_fields: ['ordre_id']
             payload_fields: ['livraison_id']
             reference_links: ['livraison_id']
-
   InscriptionUtilisateur:
     description: "Inscription d'un nouvel utilisateur"
+    required_steps:
+      - ENTREE_FLUX        # Demande d'inscription (obligatoire)
+      - TRAITEMENT_APP     # Validation utilisateur (obligatoire)
+      - SORTIE_FLUX        # Envoi email confirmation (obligatoire)
     applications:
       SiteWeb:
         patterns:
@@ -62,9 +71,12 @@ flux_types:
             timestamp_format: '%Y-%m-%d %H:%M:%S'
             identifier_fields: ['user_id']
             payload_fields: ['status']
-
   TraitementPaiement:
     description: "Traitement des paiements"
+    required_steps:
+      - ENTREE_FLUX        # Réception paiement (obligatoire)
+      - TRAITEMENT_APP     # Autorisation paiement (obligatoire)
+      - SORTIE_FLUX        # Écriture comptable (obligatoire)
     applications:
       GatewayPaiement:
         patterns:
@@ -88,9 +100,12 @@ flux_types:
             timestamp_format: '%Y-%m-%d %H:%M:%S'
             identifier_fields: ['transaction_id']
             payload_fields: ['compte']
-
   GestionColis:
     description: "Gestion et suivi des colis"
+    required_steps:
+      - ENTREE_FLUX        # Création du colis (obligatoire)
+      - TRAITEMENT_APP     # Expédition (obligatoire)
+      - SORTIE_FLUX        # Livraison finale (obligatoire)
     applications:
       EntrepotService:
         patterns:
@@ -114,9 +129,12 @@ flux_types:
             timestamp_format: '%Y-%m-%d %H:%M:%S'
             identifier_fields: ['tracking_id']
             payload_fields: ['status']
-
   VenteEnLigne:
     description: "Processus de vente en ligne"
+    required_steps:
+      - ENTREE_FLUX        # Consultation produit (obligatoire)
+      - TRAITEMENT_APP     # Ajout au panier (obligatoire)
+      - SORTIE_FLUX        # Finalisation commande (obligatoire)
     applications:
       Catalogue:
         patterns:
@@ -140,9 +158,12 @@ flux_types:
             timestamp_format: '%Y-%m-%d %H:%M:%S'
             identifier_fields: ['session_id']
             payload_fields: ['commande_id']
-
   ServiceClient:
     description: "Service client et support"
+    required_steps:
+      - ENTREE_FLUX        # Création ticket (obligatoire)
+      - TRAITEMENT_APP     # Assignation agent (obligatoire)
+      - SORTIE_FLUX        # Fermeture ticket (obligatoire)
     applications:
       TicketService:
         patterns:

@@ -8,7 +8,7 @@ import re
 import json
 import yaml
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any, Union
 from dataclasses import dataclass
 from pathlib import Path
@@ -585,23 +585,116 @@ class LogFlowTracker:
                 }
             
             return result
-        
         finally:
             session.close()
     
-    def _parse_timestamp_flexible(self, timestamp_str: str, timestamp_format: str) -> datetime:
-        """Parse un timestamp avec gestion flexible des millisecondes"""
+    def get_incomplete_flows(self, max_age_hours: int = None) -> Dict[str, List[Dict]]:
+        """Analyse les flux incomplets (qui n'ont pas fait le parcours complet)
+        
+        Args:
+            max_age_hours: Limite d'âge en heures pour considérer un flux (optionnel)
+            
+        Returns:
+            Dictionnaire avec les flux incomplets par type
+        """
+        session = self.SessionLocal()
         try:
-            # Essayer d'abord le format exact
-            return datetime.strptime(timestamp_str, timestamp_format)
-        except ValueError:
-            # Si ça échoue, essayer avec les millisecondes
-            if '.' in timestamp_str and timestamp_format == '%Y-%m-%d %H:%M:%S':
-                # Retirer les millisecondes et re-essayer
-                timestamp_without_ms = timestamp_str.split('.')[0]
-                return datetime.strptime(timestamp_without_ms, timestamp_format)
-            raise
+            incomplete_flows = {}
+            
+            # Pour chaque type de flux défini dans la configuration
+            for flux_type_name, flux_config in self.config['flux_types'].items():
+                # Récupérer les étapes requises depuis la configuration
+                required_steps = flux_config.get('required_steps', [])
+                optional_steps = flux_config.get('optional_steps', [])
+                
+                # Si aucune étape requise n'est définie, ignorer ce flux
+                if not required_steps:
+                    continue                
+                flux_type = session.query(FluxType).filter_by(name=flux_type_name).first()
+                if not flux_type:
+                    continue
+                
+                # Récupérer tous les flux de ce type
+                query = session.query(FluxInstance).filter_by(flux_type_id=flux_type.id)
+                
+                # Filtrer par âge si spécifié
+                if max_age_hours:
+                    cutoff_time = datetime.utcnow() - timedelta(hours=max_age_hours)
+                    query = query.filter(FluxInstance.created_at >= cutoff_time)
+                
+                # Exclure les sous-flux (on analyse seulement les flux principaux)
+                query = query.filter(FluxInstance.parent_id.is_(None))
+                
+                flux_instances = query.all()
+                
+                incomplete_list = []
+                
+                for flux_instance in flux_instances:
+                    # Récupérer tous les types de logs pour ce flux
+                    logs = session.query(LogEntry).filter_by(flux_instance_id=flux_instance.id).all()
+                    log_types_present = set(log.log_type for log in logs)
+                    
+                    # Vérifier quelles étapes requises manquent
+                    missing_required_stages = []
+                    for required_stage in required_steps:
+                        if required_stage not in log_types_present:
+                            missing_required_stages.append(required_stage)
+                    
+                    # Un flux est incomplet si des étapes requises manquent
+                    if missing_required_stages:
+                        # Calculer l'âge du flux
+                        age_hours = (datetime.utcnow() - flux_instance.created_at).total_seconds() / 3600
+                        
+                        # Récupérer le dernier log pour avoir une idée de l'état
+                        last_log = session.query(LogEntry).filter_by(
+                            flux_instance_id=flux_instance.id
+                        ).order_by(LogEntry.timestamp.desc()).first()
+                        
+                        # Compter les enfants si applicable
+                        children_count = session.query(FluxInstance).filter_by(
+                            parent_id=flux_instance.id
+                        ).count()
+                        
+                        # Calcul du taux de complétion basé sur les étapes requises uniquement
+                        total_required = len(required_steps)
+                        completed_required = total_required - len(missing_required_stages)
+                        completion_rate = round((completed_required / total_required) * 100, 1) if total_required > 0 else 100
+                        
+                        # Identifier toutes les étapes manquantes (requises + optionnelles présentes dans d'autres flux)
+                        all_possible_stages = required_steps + optional_steps
+                        missing_stages = [stage for stage in all_possible_stages if stage not in log_types_present]
+                        
+                        incomplete_info = {
+                            'reference': flux_instance.reference,
+                            'status': flux_instance.status,
+                            'created_at': flux_instance.created_at.isoformat(),
+                            'updated_at': flux_instance.updated_at.isoformat(),
+                            'age_hours': round(age_hours, 2),
+                            'missing_stages': missing_stages,
+                            'missing_required_stages': missing_required_stages,
+                            'present_stages': list(log_types_present),
+                            'required_stages': required_steps,
+                            'optional_stages': optional_steps,
+                            'last_activity': last_log.timestamp.isoformat() if last_log else None,
+                            'last_log_type': last_log.log_type if last_log else None,
+                            'children_count': children_count,
+                            'completion_rate': completion_rate
+                        }
+                        
+                        incomplete_list.append(incomplete_info)
+                
+                # Trier par âge (plus anciens en premier)
+                incomplete_list.sort(key=lambda x: x['age_hours'], reverse=True)
+                
+                if incomplete_list:
+                    incomplete_flows[flux_type_name] = incomplete_list
+            
+            return incomplete_flows
+            
+        finally:
+            session.close()
 
+    # ...existing code...
 def main():
     """Fonction principale pour démonstration"""
     tracker = LogFlowTracker()
@@ -632,6 +725,14 @@ def main():
         details = tracker.get_flux_details("CMD_001")
         if details:
             print(json.dumps(details, indent=2, ensure_ascii=False))
+        
+        # Analyser les flux incomplets
+        print("\nAnalyse des flux incomplets:")
+        incomplete_flows = tracker.get_incomplete_flows(max_age_hours=24)
+        for flux_type, instances in incomplete_flows.items():
+            print(f"Flux incomplets pour {flux_type}:")
+            for instance in instances:
+                print(f"- {instance['reference']} (Âge: {instance['age_hours']}h)")
     
     except Exception as e:
         logger.error(f"Erreur dans main: {e}")

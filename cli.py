@@ -184,6 +184,92 @@ def cmd_list_config(args):
     
     return 0
 
+def cmd_incomplete_flows(args):
+    """Analyse les flux incomplets"""
+    tracker = LogFlowTracker(args.config)
+    
+    # Récupérer les flux incomplets
+    incomplete_flows = tracker.get_incomplete_flows(max_age_hours=getattr(args, 'max_age_hours', None))
+    
+    if not incomplete_flows:
+        print("✅ Aucun flux incomplet trouvé !")
+        return 0
+    
+    if args.json:
+        print(json.dumps(incomplete_flows, indent=2, ensure_ascii=False))
+        return 0
+    
+    # Affichage formaté
+    total_incomplete = sum(len(instances) for instances in incomplete_flows.values())
+    print(f"🔍 Analyse des flux incomplets - {total_incomplete} flux détectés")
+    print("=" * 60)
+    
+    for flux_type, instances in incomplete_flows.items():
+        print(f"\n📋 {flux_type} ({len(instances)} flux incomplets)")
+        print("-" * 40)
+        
+        for i, instance in enumerate(instances, 1):
+            # Icône selon l'âge
+            if instance['age_hours'] > 24:
+                age_icon = "🚨"  # Très ancien
+            elif instance['age_hours'] > 8:
+                age_icon = "⚠️"   # Ancien
+            else:
+                age_icon = "🕐"  # Récent
+            
+            print(f"{i:2d}. {age_icon} {instance['reference']}")
+            print(f"     Âge: {instance['age_hours']}h | Complétion: {instance['completion_rate']}%")
+            print(f"     Status: {instance['status']}")
+            
+            if instance['last_activity']:
+                print(f"     Dernière activité: {instance['last_activity'][:19]} ({instance['last_log_type']})")
+            
+            if instance['missing_stages']:
+                missing_str = ", ".join(instance['missing_stages'])
+                print(f"     ❌ Étapes manquantes: {missing_str}")
+            
+            if instance['present_stages']:
+                present_str = ", ".join(instance['present_stages'])
+                print(f"     ✅ Étapes présentes: {present_str}")
+            
+            if instance['children_count'] > 0:
+                print(f"     👥 Sous-flux: {instance['children_count']}")
+            
+            print()
+    
+    # Statistiques globales
+    print("=" * 60)
+    print("📊 STATISTIQUES GLOBALES")
+    print("=" * 60)
+    
+    # Compter par type d'étape manquante
+    missing_stages_count = {}
+    total_age = 0
+    oldest_flux = None
+    
+    for flux_type, instances in incomplete_flows.items():
+        for instance in instances:
+            total_age += instance['age_hours']
+            
+            if not oldest_flux or instance['age_hours'] > oldest_flux['age_hours']:
+                oldest_flux = instance
+            
+            for missing_stage in instance['missing_stages']:
+                missing_stages_count[missing_stage] = missing_stages_count.get(missing_stage, 0) + 1
+    
+    if total_incomplete > 0:
+        avg_age = total_age / total_incomplete
+        print(f"Âge moyen des flux incomplets: {avg_age:.1f}h")
+        
+        if oldest_flux:
+            print(f"Flux le plus ancien: {oldest_flux['reference']} ({oldest_flux['age_hours']}h)")
+        
+        print("\nÉtapes les plus souvent manquantes:")
+        for stage, count in sorted(missing_stages_count.items(), key=lambda x: x[1], reverse=True):
+            print(f"  • {stage}: {count} fois")
+    
+    return 0
+
 def main():
     parser = argparse.ArgumentParser(description='Utilitaire de suivi de flux multi-applicatifs')
     parser.add_argument('--config', '-c', default='config.yaml', 
@@ -222,6 +308,12 @@ def main():
     # Commande list-config
     parser_list = subparsers.add_parser('list-config', help='Liste les flux et applications disponibles')
     parser_list.set_defaults(func=cmd_list_config)
+    
+    # Commande incomplete-flows
+    parser_incomplete = subparsers.add_parser('incomplete-flows', help='Analyse les flux incomplets')
+    parser_incomplete.add_argument('--max-age-hours', type=int, help='Âge maximum des flux à considérer (en heures)')
+    parser_incomplete.add_argument('--json', action='store_true', help='Sortie en format JSON')
+    parser_incomplete.set_defaults(func=cmd_incomplete_flows)
     
     args = parser.parse_args()
     
