@@ -513,9 +513,12 @@ class LogFlowTracker:
             
             # Récupérer les logs du flux cible (parent si sous-flux, sinon le flux lui-même)
             logs = session.query(LogEntry).filter_by(flux_instance_id=target_flux.id).order_by(LogEntry.timestamp).all()
-            
-            # Récupérer les références croisées
+              # Récupérer les références croisées (sortantes et entrantes)
             cross_refs = session.query(CrossReference).filter_by(source_flux_id=target_flux.id).all()
+            incoming_refs = session.query(CrossReference).filter_by(target_flux_id=target_flux.id).all()
+            
+            # Un flux a des références croisées s'il a soit des références sortantes, soit des références entrantes
+            has_any_cross_references = len(cross_refs) > 0 or len(incoming_refs) > 0
             
             # Récupérer les enfants
             children = session.query(FluxInstance).filter_by(parent_id=target_flux.id).all()
@@ -538,14 +541,21 @@ class LogFlowTracker:
                         'parsed_data': json.loads(log.parsed_data) if log.parsed_data else {}
                     }
                     for log in logs
-                ],
-                'cross_references': [
+                ],                'cross_references': [
                     {
                         'target_reference': ref.target_flux.reference,
                         'reference_field': ref.reference_field,
                         'reference_value': ref.reference_value
                     }
                     for ref in cross_refs
+                ],
+                'incoming_references': [
+                    {
+                        'source_reference': ref.source_flux.reference,
+                        'reference_field': ref.reference_field,
+                        'reference_value': ref.reference_value
+                    }
+                    for ref in incoming_refs
                 ],
                 'children': [
                     {
@@ -699,7 +709,373 @@ class LogFlowTracker:
         finally:
             session.close()
 
-    # ...existing code...
+    def get_all_linked_flows(self, reference: str) -> Optional[Dict]:
+        """Récupère tous les flux liés par références croisées (bidirectionnelles)
+        
+        Args:
+            reference: La référence du flux à analyser
+            
+        Returns:
+            Dictionnaire contenant tous les flux liés avec leurs détails complets
+        """
+        session = self.SessionLocal()
+        try:
+            # Trouver le flux initial
+            initial_flux = session.query(FluxInstance).filter_by(reference=reference).first()
+            if not initial_flux:
+                return None
+            
+            # Collecter tous les flux liés de manière récursive
+            visited_flux_ids = set()
+            linked_flows = {}
+            
+            def collect_linked_flows(flux_id, depth=0, max_depth=10):
+                """Collecte récursivement tous les flux liés"""
+                if flux_id in visited_flux_ids or depth > max_depth:
+                    return
+                
+                visited_flux_ids.add(flux_id)
+                
+                # Récupérer le flux courant
+                current_flux = session.query(FluxInstance).filter_by(id=flux_id).first()
+                if not current_flux:
+                    return
+                
+                # Ajouter le flux courant à la collection
+                if current_flux.reference not in linked_flows:
+                    # Vérifier si c'est un sous-flux
+                    is_subflow = current_flux.parent_id is not None
+                    target_flux = current_flux
+                    
+                    if is_subflow:
+                        # Si c'est un sous-flux, récupérer le flux parent
+                        parent_flux = session.query(FluxInstance).filter_by(id=current_flux.parent_id).first()
+                        if parent_flux:
+                            target_flux = parent_flux
+                        else:
+                            target_flux = current_flux
+                            is_subflow = False
+                    
+                    # Récupérer les logs du flux cible
+                    logs = session.query(LogEntry).filter_by(flux_instance_id=target_flux.id).order_by(LogEntry.timestamp).all()
+                    
+                    # Récupérer les références croisées (sortantes et entrantes)
+                    outgoing_refs = session.query(CrossReference).filter_by(source_flux_id=target_flux.id).all()
+                    incoming_refs = session.query(CrossReference).filter_by(target_flux_id=target_flux.id).all()
+                    
+                    # Récupérer les enfants
+                    children = session.query(FluxInstance).filter_by(parent_id=target_flux.id).all()
+                    
+                    flux_data = {
+                        'flux': {
+                            'id': target_flux.id,
+                            'reference': target_flux.reference,
+                            'status': target_flux.status,
+                            'flux_type': target_flux.flux_type.name,
+                            'created_at': target_flux.created_at.isoformat(),
+                            'updated_at': target_flux.updated_at.isoformat(),
+                            'is_initial_request': target_flux.reference == reference
+                        },
+                        'logs': [
+                            {
+                                'timestamp': log.timestamp.isoformat(),
+                                'application': log.application.name,
+                                'log_type': log.log_type,
+                                'raw_log': log.raw_log,
+                                'parsed_data': json.loads(log.parsed_data) if log.parsed_data else {}
+                            }
+                            for log in logs
+                        ],
+                        'outgoing_references': [
+                            {
+                                'target_reference': ref.target_flux.reference,
+                                'reference_field': ref.reference_field,
+                                'reference_value': ref.reference_value,
+                                'created_at': ref.created_at.isoformat()
+                            }
+                            for ref in outgoing_refs
+                        ],
+                        'incoming_references': [
+                            {
+                                'source_reference': ref.source_flux.reference,
+                                'reference_field': ref.reference_field,
+                                'reference_value': ref.reference_value,
+                                'created_at': ref.created_at.isoformat()
+                            }
+                            for ref in incoming_refs
+                        ],
+                        'children': [
+                            {
+                                'reference': child.reference,
+                                'status': child.status
+                            }
+                            for child in children
+                        ]
+                    }
+                    
+                    # Ajouter des informations sur le sous-flux si applicable
+                    if is_subflow:
+                        flux_data['subflow_info'] = {
+                            'is_subflow': True,
+                            'requested_reference': current_flux.reference,
+                            'subflow_details': {
+                                'id': current_flux.id,
+                                'reference': current_flux.reference,
+                                'status': current_flux.status,
+                                'created_at': current_flux.created_at.isoformat(),
+                                'updated_at': current_flux.updated_at.isoformat()
+                            },
+                            'parent_reference': target_flux.reference
+                        }
+                        
+                        # Récupérer les logs spécifiques au sous-flux
+                        subflow_logs = session.query(LogEntry).filter_by(flux_instance_id=current_flux.id).order_by(LogEntry.timestamp).all()
+                        flux_data['subflow_info']['subflow_logs'] = [
+                            {
+                                'timestamp': log.timestamp.isoformat(),
+                                'application': log.application.name,
+                                'log_type': log.log_type,
+                                'raw_log': log.raw_log,
+                                'parsed_data': json.loads(log.parsed_data) if log.parsed_data else {}
+                            }
+                            for log in subflow_logs
+                        ]
+                    else:
+                        flux_data['subflow_info'] = {
+                            'is_subflow': False,
+                            'requested_reference': current_flux.reference
+                        }
+                    
+                    linked_flows[target_flux.reference] = flux_data
+                
+                # Continuer la recherche avec les références sortantes
+                for ref in session.query(CrossReference).filter_by(source_flux_id=flux_id).all():
+                    collect_linked_flows(ref.target_flux_id, depth + 1)
+                
+                # Continuer la recherche avec les références entrantes
+                for ref in session.query(CrossReference).filter_by(target_flux_id=flux_id).all():
+                    collect_linked_flows(ref.source_flux_id, depth + 1)
+                
+                # Inclure le parent si c'est un sous-flux
+                if current_flux.parent_id:
+                    collect_linked_flows(current_flux.parent_id, depth + 1)
+                
+                # Inclure les enfants
+                for child in session.query(FluxInstance).filter_by(parent_id=flux_id).all():
+                    collect_linked_flows(child.id, depth + 1)
+            
+            # Démarrer la collecte à partir du flux initial
+            collect_linked_flows(initial_flux.id)
+            
+            # Construire la réponse finale
+            result = {
+                'initial_reference': reference,
+                'total_linked_flows': len(linked_flows),
+                'linked_flows': linked_flows,
+                'cross_reference_map': self._build_cross_reference_map(session, list(visited_flux_ids))
+            }
+            
+            return result
+            
+        finally:
+            session.close()
+    
+    def _build_cross_reference_map(self, session: Session, flux_ids: List[int]) -> Dict:
+        """Construit une carte des références croisées entre les flux liés"""
+        cross_ref_map = {
+            'connections': [],
+            'summary': {
+                'total_connections': 0,
+                'bidirectional_pairs': []
+            }
+        }
+        
+        if not flux_ids:
+            return cross_ref_map
+        
+        # Récupérer toutes les références croisées entre les flux
+        all_refs = session.query(CrossReference).filter(
+            CrossReference.source_flux_id.in_(flux_ids),
+            CrossReference.target_flux_id.in_(flux_ids)
+        ).all()
+        
+        for ref in all_refs:
+            connection = {
+                'source_reference': ref.source_flux.reference,
+                'target_reference': ref.target_flux.reference,
+                'reference_field': ref.reference_field,
+                'reference_value': ref.reference_value,
+                'created_at': ref.created_at.isoformat()
+            }
+            cross_ref_map['connections'].append(connection)
+        
+        cross_ref_map['summary']['total_connections'] = len(all_refs)
+        
+        # Identifier les paires bidirectionnelles
+        ref_pairs = {}
+        for ref in all_refs:
+            key = tuple(sorted([ref.source_flux.reference, ref.target_flux.reference]))
+            if key not in ref_pairs:
+                ref_pairs[key] = []
+            ref_pairs[key].append(ref)
+        
+        bidirectional_pairs = [
+            {
+                'flux_a': pair[0],
+                'flux_b': pair[1],
+                'connections_count': len(refs)
+            }
+            for pair, refs in ref_pairs.items() if len(refs) > 1
+        ]
+        
+        cross_ref_map['summary']['bidirectional_pairs'] = bidirectional_pairs
+        
+        return cross_ref_map
+    def get_stats(self, include_details: bool = False) -> Dict:
+        """Calcule les statistiques des flux par étapes et fournit un résumé global
+        
+        Args:
+            include_details: Si True, inclut la liste des flux pour chaque étape
+            
+        Returns:
+            Dictionnaire contenant les statistiques détaillées
+        """
+        session = self.SessionLocal()
+        try:
+            stats = {
+                'total_flux': 0,
+                'flux_by_type': {},
+                'flux_by_status': {},
+                'stages_analysis': {},
+                'global_stage_counts': {},
+                'flux_with_cross_references': 0,
+                'flux_with_subflows': 0,
+                'database_overview': {}
+            }
+            
+            # Compter tous les flux
+            total_flux_count = session.query(FluxInstance).count()
+            stats['total_flux'] = total_flux_count
+            
+            # Compter les flux par type
+            for flux_type in session.query(FluxType).all():
+                flux_count = session.query(FluxInstance).filter_by(flux_type_id=flux_type.id).count()
+                stats['flux_by_type'][flux_type.name] = {
+                    'count': flux_count,
+                    'description': flux_type.description
+                }
+              # Compter les flux par statut
+            from sqlalchemy import func
+            status_counts = session.query(FluxInstance.status, func.count(FluxInstance.id)).group_by(FluxInstance.status).all()
+            
+            for status, count in status_counts:
+                stats['flux_by_status'][status] = count
+            
+            # Analyser les étapes par type de flux
+            for flux_type in session.query(FluxType).all():
+                type_name = flux_type.name
+                flux_config = self.config['flux_types'].get(type_name, {})
+                
+                # Récupérer tous les flux de ce type (seulement les flux principaux, pas les sous-flux)
+                flux_instances = session.query(FluxInstance).filter_by(
+                    flux_type_id=flux_type.id
+                ).filter(FluxInstance.parent_id.is_(None)).all()
+                
+                if not flux_instances:
+                    continue
+                  # Analyser les étapes pour ce type de flux
+                stage_analysis = {
+                    'total_flux': len(flux_instances),
+                    'stages': {},
+                    'required_stages': flux_config.get('required_steps', []),
+                    'optional_stages': flux_config.get('optional_steps', [])
+                }
+                
+                # Compter les étapes pour chaque flux de ce type
+                stage_counts = {}
+                all_observed_stages = set()
+                stage_flux_details = {}  # Pour stocker les détails des flux par étape
+                
+                for flux_instance in flux_instances:
+                    # Récupérer tous les logs pour ce flux
+                    logs = session.query(LogEntry).filter_by(flux_instance_id=flux_instance.id).all()
+                    log_types = set(log.log_type for log in logs)
+                    all_observed_stages.update(log_types)
+                    
+                    # Compter chaque type de log et collecter les détails des flux si demandé
+                    for log_type in log_types:
+                        if log_type not in stage_counts:
+                            stage_counts[log_type] = 0
+                            if include_details:
+                                stage_flux_details[log_type] = []
+                        
+                        stage_counts[log_type] += 1
+                        
+                        if include_details:
+                            # Ajouter les détails du flux pour cette étape
+                            flux_detail = {
+                                'reference': flux_instance.reference,
+                                'status': flux_instance.status,
+                                # 'created_at': flux_instance.created_at.isoformat(),
+                                # 'updated_at': flux_instance.updated_at.isoformat()
+                            }
+                            # Éviter les doublons (un flux peut apparaître plusieurs fois pour la même étape)
+                            if flux_detail not in stage_flux_details[log_type]:
+                                stage_flux_details[log_type].append(flux_detail)
+                  # Calculer les pourcentages et statistiques pour chaque étape
+                for stage in all_observed_stages:
+                    count = stage_counts.get(stage, 0)
+                    percentage = (count / len(flux_instances)) * 100 if len(flux_instances) > 0 else 0
+                    
+                    stage_info = {
+                        'count': count,
+                        'percentage': round(percentage, 1),
+                        'is_required': stage in stage_analysis['required_stages'],
+                        'is_optional': stage in stage_analysis['optional_stages']
+                    }
+                    
+                    # Ajouter les détails des flux si demandé
+                    if include_details and stage in stage_flux_details:
+                        stage_info['flux_list'] = sorted(stage_flux_details[stage], key=lambda x: x['reference'])
+                    
+                    stage_analysis['stages'][stage] = stage_info
+                    
+                    # Ajouter au comptage global
+                    if stage not in stats['global_stage_counts']:
+                        stats['global_stage_counts'][stage] = 0
+                    stats['global_stage_counts'][stage] += count
+                
+                stats['stages_analysis'][type_name] = stage_analysis
+            
+            # Compter les flux avec références croisées
+            flux_with_cross_refs = session.query(FluxInstance).join(CrossReference, 
+                (CrossReference.source_flux_id == FluxInstance.id) | 
+                (CrossReference.target_flux_id == FluxInstance.id)
+            ).distinct().count()
+            stats['flux_with_cross_references'] = flux_with_cross_refs
+            
+            # Compter les flux avec sous-flux
+            flux_with_subflows = session.query(FluxInstance).filter(
+                session.query(FluxInstance).filter(
+                    FluxInstance.parent_id == FluxInstance.id
+                ).exists()
+            ).count()
+            stats['flux_with_subflows'] = flux_with_subflows
+            
+            # Aperçu de la base de données
+            stats['database_overview'] = {
+                'total_log_entries': session.query(LogEntry).count(),
+                'total_cross_references': session.query(CrossReference).count(),
+                'total_flux_types': session.query(FluxType).count(),
+                'total_applications': session.query(Application).count(),
+                'total_subflows': session.query(FluxInstance).filter(FluxInstance.parent_id.isnot(None)).count()
+            }
+            
+            return stats
+            
+        finally:
+            session.close()
+
 def main():
     """Fonction principale pour démonstration"""
     tracker = LogFlowTracker()
