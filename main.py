@@ -4,6 +4,7 @@ Système de suivi de flux multi-applicatifs
 Traite les logs ligne par ligne et suit les flux avec références croisées
 """
 
+import os
 import re
 import json
 import yaml
@@ -234,10 +235,14 @@ class LogFlowTracker:
                             groups = match.groupdict()
                             
                             # Parser le timestamp avec gestion flexible
-                            timestamp = self._parse_timestamp_flexible(
-                                groups['timestamp'], 
-                                pattern.timestamp_format
-                            )
+                            if pattern.timestamp_format == 'timestamp':
+                                if os.name == 'nt':
+                                    tm = int(groups['timestamp'])
+                                    timestamp = datetime.fromtimestamp(tm / 1000)
+                                else:
+                                    timestamp = datetime.fromtimestamp(tm)
+                            else:
+                                timestamp = datetime.strptime(groups['timestamp'], pattern.timestamp_format)
                             
                             # Extraire les champs identifiants
                             identifier_fields = {
